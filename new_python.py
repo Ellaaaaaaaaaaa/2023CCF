@@ -15,11 +15,12 @@ def get_train_data(file_path,edge_pth):
     edge_df = pd.read_csv(edge_pth, encoding='utf-8')
     df.head()
 
-    # %%
     geohasd_df_dict = {}
     date_df_dict = {}
     number_hash = 0
     number_date = 0
+
+    # 循环遍历节点数据的 "geohash_id" "date_id"列，将不同的节点ID和时间映射到数字
     for i in df["geohash_id"]:
 
         if i not in geohasd_df_dict.keys():
@@ -31,13 +32,22 @@ def get_train_data(file_path,edge_pth):
             date_df_dict[i] = number_date
             number_date += 1
 
+    # 创建了一个二维列表 new_data，其中所有元素都初始化为0
+    # new_data 的维度取决于节点ID和日期ID的数量
     new_data = [len(geohasd_df_dict) * [0]] * len(date_df_dict)
     for index, row in df.iterrows():
         # print(index)
         hash_index, date_index = geohasd_df_dict[row["geohash_id"]], date_df_dict[row["date_id"]]
         #将时间index加到里面
 
+        # [date_index] + list(row.iloc[2:]) 是一个列表，它将日期索引作为第一个元素，然后将 row 数据中从第三个元素开始的所有元素添加到列表中。
+        # 这相当于将日期和节点特征数据合并为一个列表
         new_data[date_index][hash_index] = [date_index]+list(row.iloc[2:])
+    """
+    new_data 是一个二维列表。
+    每行代表一个日期，每列代表一个节点。
+    每个元素是一个列表，其中包含日期ID和节点的特征数据。
+    """
     new_data = np.array(new_data)
     # x_train,y_train = new_data[:, :-2], new_data[:, -2:]
     # print(len(geohasd_df_dict))
@@ -46,9 +56,12 @@ def get_train_data(file_path,edge_pth):
     # print(y_train.shape)
     #这里构建邻接矩阵其中mask表示1为有边，0无边， value_mask表示有值
     #并且这里我考虑mask是一个无向图，如果有向删除x_mask[date_index][point2_index][point1_index],value_mask同理
+    # todo 这里源代码考虑为无向图，是否考虑边的方向？不过我个人感觉先不改这里
     x_mask =  np.zeros((len(date_df_dict),len(geohasd_df_dict),len(geohasd_df_dict),1), dtype = float)
     x_edge_df =np.zeros((len(date_df_dict),len(geohasd_df_dict),len(geohasd_df_dict),2), dtype = float)
 
+    # x_mask 中的值为1表示存在边，类似邻接矩阵
+    # x_edge_df 中的值包含了边的特征信息
     for index, row in edge_df.iterrows():
         # print(index)
         if row["geohash6_point1"] not in geohasd_df_dict.keys() or row["geohash6_point2"] not in geohasd_df_dict.keys():
@@ -57,6 +70,7 @@ def get_train_data(file_path,edge_pth):
             ,row["F_1"],row["F_2"],date_df_dict[row["date_id"]]
         x_mask[date_index][point1_index][point2_index] = 1
         x_mask[date_index][point2_index][point1_index] = 1
+        # TODO 这里是直接输入边特征的，数据没处理
         x_edge_df[date_index][point1_index][point2_index] =  [F_1,F_2]
         x_edge_df[date_index][point2_index][point1_index] = [F_1, F_2]
     # print(data)
@@ -88,7 +102,7 @@ def train(args):
     x_edge_train, x_edge_dev = torch.tensor(x_edge_df[:int(len(x_edge_df) * args.rat)]),torch.tensor( x_edge_df[int(len(x_edge_df) * args.rat):])
 
 
-
+    # 日期的嵌入维度
     date_emb = 5
      # 这里的x包含了date_id+F35个特征+2个y值的
     # train_activate = torch.tensor(y_train[:, -2])
@@ -96,8 +110,11 @@ def train(args):
 
 
     # rmse_loss = torch.sqrt(mse_loss)
+    # TODO 我突然发现这里没有结合GAT和Bi-LSTM
+    # TODO 要调一下这里模型的参数
     model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
     # model = my_model.BILSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
+    # TODO 优化器这里感觉保持不变，就用Adam怎么样
     optimizer = torch.optim.Adam(params=model.parameters(),lr=args.lr)
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decline, gamma=0.5, last_epoch=-1)
     model.train()
@@ -108,6 +125,7 @@ def train(args):
         for j in trange(trainset.batch_count):
             x_date,x_feature,x_mask_data,x_edge_data,x_tags= trainset.get_batch(j)
             act_pre, con_pre = model(x_date,x_feature,x_mask_data)
+            # 得到活跃指数和消费指数的预测结果，并将它们拼接在一起
             predict = torch.cat((act_pre, con_pre), dim=-1)
 
             loss = criterion(predict, x_tags)

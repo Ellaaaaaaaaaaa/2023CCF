@@ -6,6 +6,8 @@ import  pickle
 import os
 import json
 
+# todo 节点特征和边特征数据预处理?
+# todo 可能节点不用处理，但是边特征应该要处理
 class DataIterator(object):
     def __init__(self, x_data,x_mask_data,x_edge_data, args):
         self.x_data,self.x_mask_data,self.x_edge_data,=x_data,x_mask_data,x_edge_data,
