@@ -70,7 +70,7 @@ def get_train_data(file_path,edge_pth):
             ,row["F_1"],row["F_2"],date_df_dict[row["date_id"]]
         x_mask[date_index][point1_index][point2_index] = 1
         x_mask[date_index][point2_index][point1_index] = 1
-        # TODO 这里是直接输入边特征的，数据没处理
+        # TODO 这里是直接输入边特征的，数据没处理 对数处理
         x_edge_df[date_index][point1_index][point2_index] =  [F_1,F_2]
         x_edge_df[date_index][point2_index][point1_index] = [F_1, F_2]
     # print(data)
