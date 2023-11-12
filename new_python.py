@@ -91,6 +91,46 @@ def eval(model, dataset, args):
         print("this epoch dev loss is {}".format(dev_loss))
         model.train()
 
+# todo 这是我补充写的获取测试集和预测代码，还没测试
+def get_test_data(node_file_path, edge_file_path, geohasd_df_dict, date_df_dict):
+    # Read test data
+    df_test = pd.read_csv(node_file_path, encoding='utf-8')
+    edge_df_test = pd.read_csv(edge_file_path, encoding='utf-8')
+
+    # Initialize data structures to store test data
+    x_test = [len(geohasd_df_dict) * [0]] * len(date_df_dict)
+    x_mask_test = np.zeros((len(date_df_dict), len(geohasd_df_dict), len(geohasd_df_dict), 1), dtype=float)
+    x_edge_test = np.zeros((len(date_df_dict), len(geohasd_df_dict), len(geohasd_df_dict), 2), dtype=float)
+
+    # Process test data similar to what you did for the training data
+    for index, row in df_test.iterrows():
+        hash_index, date_index = geohasd_df_dict[row["geohash_id"]], date_df_dict[row["date_id"]]
+        x_test[date_index][hash_index] = [date_index] + list(row.iloc[2:])
+
+    for index, row in edge_df_test.iterrows():
+        if row["geohash6_point1"] not in geohasd_df_dict.keys() or row["geohash6_point2"] not in geohasd_df_dict.keys():
+            continue
+        point1_index, point2_index, F_1, F_2, date_index = geohasd_df_dict[row["geohash6_point1"]], geohasd_df_dict[row["geohash6_point2"]] \
+            , row["F_1"], row["F_2"], date_df_dict[row["date_id"]]
+        x_mask_test[date_index][point1_index][point2_index] = 1
+        x_mask_test[date_index][point2_index][point1_index] = 1
+        x_edge_test[date_index][point1_index][point2_index] = [F_1, F_2]
+        x_edge_test[date_index][point2_index][point1_index] = [F_1, F_2]
+
+    return torch.tensor(x_test), torch.tensor(x_mask_test), torch.tensor(x_edge_test)
+
+def predict(model, x_test, x_mask_test, x_edge_test):
+    model.eval()
+    with torch.no_grad():
+        # Process each batch of the test set
+        for j in range(x_test.shape[0]):
+            x_date, x_feature, x_mask_data, x_edge_data, x_tags = x_test[j], x_test[j], x_mask_test[j], x_edge_test[j], torch.zeros(1, dtype=torch.float32)
+            # nhid隐藏层输入的是边的邻接矩阵关系x_mask_data，这里没有考虑边上的值
+            act_pre, con_pre = model(x_date, x_feature, x_mask_data)
+            # Get the predictions for active and consume indices
+            predict = torch.cat((act_pre, con_pre), dim=-1)
+            print("Predictions:", predict)
+
 
 def train(args):
 
@@ -100,7 +140,12 @@ def train(args):
     x_train,x_dev = torch.tensor(x_train[:int(len(x_train)*args.rat)]),torch.tensor(x_train[int(len(x_train)*args.rat):])
     x_mask_train,x_mask_dev = torch.tensor(x_mask[:int(len(x_mask)*args.rat)]),torch.tensor(x_mask[int(len(x_mask)*args.rat):])
     x_edge_train, x_edge_dev = torch.tensor(x_edge_df[:int(len(x_edge_df) * args.rat)]),torch.tensor( x_edge_df[int(len(x_edge_df) * args.rat):])
-
+    # todo 读取测试集，我新加的还没做测试，可能有问题
+    geohasd_df_dict_test, date_df_dict_test, x_test, x_mask_test, x_edge_test = get_test_data(
+        './dataset/node_test_4_A.csv',
+        './dataset/edge_test_4_A.csv',
+        geohasd_df_dict,
+        date_df_dict)
 
     # 日期的嵌入维度
     date_emb = 5
@@ -110,11 +155,12 @@ def train(args):
 
 
     # rmse_loss = torch.sqrt(mse_loss)
-    # TODO 我突然发现这里没有结合GAT和Bi-LSTM
+    # TODO 发现这里没有结合GAT和Bi-LSTM
     # TODO 要调一下这里模型的参数
-    model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
+    # model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
     # model = my_model.BILSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
-    # TODO 优化器这里感觉保持不变，就用Adam怎么样
+    # todo 这个新模型损失反而变大了
+    model = my_model.GATBiLSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid_gat=32, nhid_lstm=32, dropout=0.3, alpha=0.3, nheads=4).to(args.device)
     optimizer = torch.optim.Adam(params=model.parameters(),lr=args.lr)
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decline, gamma=0.5, last_epoch=-1)
     model.train()
@@ -123,7 +169,9 @@ def train(args):
     for indx in range(args.epochs):
         train_all_loss = 0.0
         for j in trange(trainset.batch_count):
+            # todo x_edge_data即边上特征值组成的数据没使用到
             x_date,x_feature,x_mask_data,x_edge_data,x_tags= trainset.get_batch(j)
+            # todo nhid隐藏层输入的是边的邻接矩阵关系x_mask_data，这里没有考虑边上的值
             act_pre, con_pre = model(x_date,x_feature,x_mask_data)
             # 得到活跃指数和消费指数的预测结果，并将它们拼接在一起
             predict = torch.cat((act_pre, con_pre), dim=-1)
@@ -137,6 +185,8 @@ def train(args):
         # scheduler.step()
         eval(model,valset, args)
 
+    # todo 预测函数
+    predict(model, x_test, x_mask_test, x_edge_test)
 
 
 
@@ -156,6 +206,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--decline', type=int, default=30, help="number of epochs to decline")
     train(parser.parse_args())
+
 
 
 # %%
