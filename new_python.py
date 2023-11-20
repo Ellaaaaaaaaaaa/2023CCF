@@ -32,6 +32,8 @@ def get_train_data(file_path,edge_pth):
             date_df_dict[i] = number_date
             number_date += 1
 
+    # number_hash 1140
+    # number_date 90
     # 创建了一个二维列表 new_data，其中所有元素都初始化为0
     # new_data 的维度取决于节点ID和日期ID的数量
     new_data = [len(geohasd_df_dict) * [0]] * len(date_df_dict)
@@ -49,6 +51,7 @@ def get_train_data(file_path,edge_pth):
     每个元素是一个列表，其中包含日期ID和节点的特征数据。
     """
     new_data = np.array(new_data)
+    # new_data.shape 90 1140 38
     # x_train,y_train = new_data[:, :-2], new_data[:, -2:]
     # print(len(geohasd_df_dict))
     # exit()
@@ -96,26 +99,29 @@ def predict(model, dataset, args, geohasd_df_dict,date_df_dict_test):
     model.eval()
     with torch.no_grad():
         predictions = []
-
-        for j in tqdm(range(dataset.batch_count)):
+        for j in trange(dataset.batch_count):
             # 获取测试集的一个批次数据
             x_date, x_feature, x_mask_data, x_edge_data= dataset.get_batch(j)
-
             # 进行预测
             act_pre, con_pre = model(x_date, x_feature, x_mask_data)
-
             # 将预测结果整理为需要的格式
-            predictions_batch = []
-            for idx in range(len(act_pre)):
-                prediction = {
-                    "geohash_id": list(geohasd_df_dict.keys())[idx],
-                    "activity_level": act_pre[idx].cpu().numpy(),
-                    "consumption_level": con_pre[idx].cpu().numpy(),
-                    "date_id": list(date_df_dict_test.keys())[idx]
-                }
-                predictions_batch.append(prediction)
+            # act_pre (4,1140,1)
+            for idx in range(act_pre.size(1)):
+                geohash_id = list(geohasd_df_dict.keys())[idx]
+                date_ids = list(date_df_dict_test.keys())
 
-            predictions.extend(predictions_batch)
+                for date_id_idx in range(len(date_ids)):
+                    date_id = date_ids[date_id_idx]
+                    act_level = act_pre[date_id_idx, idx,  0].cpu().item()
+                    con_level = con_pre[date_id_idx, idx,  0].cpu().item()
+
+                    prediction = {
+                        "geohash_id": geohash_id,
+                        "activity_level": act_level,
+                        "consumption_level": con_level,
+                        "date_id": date_id
+                    }
+                    predictions.append(prediction)
 
     # 将所有预测结果整理为 DataFrame
     predictions_df = pd.DataFrame(predictions)
@@ -143,9 +149,9 @@ def train(args):
     # TODO 发现这里没有结合GAT和Bi-LSTM
     # TODO 要调一下这里模型的参数
     model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
-    # model = my_model.BILSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
-    # todo 这个新模型损失反而变大了
-    # model = my_model.GATBiLSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid_gat=32, nhid_lstm=32, dropout=0.3, alpha=0.3, nheads=4).to(args.device)
+    # # model = my_model.BILSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
+    # # todo 这个新模型损失反而变大了
+    # # model = my_model.GATBiLSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid_gat=32, nhid_lstm=32, dropout=0.3, alpha=0.3, nheads=4).to(args.device)
     # optimizer = torch.optim.Adam(params=model.parameters(),lr=args.lr)
     # # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decline, gamma=0.5, last_epoch=-1)
     # model.train()
@@ -156,11 +162,12 @@ def train(args):
     #     for j in trange(trainset.batch_count):
     #         # todo x_edge_data即边上特征值组成的数据没使用到
     #         x_date,x_feature,x_mask_data,x_edge_data,x_tags= trainset.get_batch(j)
+    #         # torch.Size([4, 1140])torch.Size([4, 1140, 35])torch.Size([4, 1140, 1140, 1])torch.Size([4, 1140, 1140, 2])torch.Size([4, 1140, 2])
     #         # todo nhid隐藏层输入的是边的邻接矩阵关系x_mask_data，这里没有考虑边上的值
     #         act_pre, con_pre = model(x_date,x_feature,x_mask_data)
     #         # 得到活跃指数和消费指数的预测结果，并将它们拼接在一起
     #         predict = torch.cat((act_pre, con_pre), dim=-1)
-    #
+    #         # ([4, 1140, 2])
     #         loss = criterion(predict, x_tags)
     #         train_all_loss += loss
     #         optimizer.zero_grad()
@@ -173,7 +180,7 @@ def train(args):
     # # 在训练循环结束后，保存模型参数
     # torch.save(model.state_dict(), 'GAT_model_weights.pth')
 
-    # todo 读取测试集，我新加的还没做测试，可能有问题
+    # # todo 读取测试集，我新加的还没做测试，可能有问题
     geohasd_df_dict_test, date_df_dict_test, x_test, x_mask_test, x_edge_test = get_train_data(
         './dataset/node_test_4_A.csv',
         './dataset/edge_test_4_A.csv')
@@ -187,7 +194,7 @@ def train(args):
     predictions_df = predict(model, testset, args,geohasd_df_dict_test,date_df_dict_test)
 
     # 将预测结果保存到 CSV 文件
-    predictions_df.to_csv("predictions_test_4_A.csv", index=False)
+    predictions_df.to_csv("predictions_test_4_A.csv", sep='\t', index=False)
 
 
 

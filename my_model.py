@@ -67,27 +67,26 @@ class GraphAttentionLayer(nn.Module):
         p
         '''
         adj=torch.squeeze(adj,-1)
-        # print(h.dtype)
-        # print(h.shape)
+        # torch.Size([4, 1140, 35])
 
         Wh = torch.matmul(h, self.W)  # (N, out_features)
 
         Wh1 = torch.matmul(Wh, self.a[:self.out_features, :])  # (N, 1)
         Wh2 = torch.matmul(Wh, self.a[self.out_features:, :])  # (N, 1)
-        # print(Wh1.shape)
-        # print(Wh2.shape)
+        # torch.Size([4, 1140, 1])
+        # torch.Size([4, 1140, 1])
 
         # Wh1 + Wh2.T 是N*N矩阵，第i行第j列是Wh1[i]+Wh2[j]
         # 那么Wh1 + Wh2.T的第i行第j列刚好就是文中的a^T*[Whi||Whj]
         # e矩阵 代表着节点i对节点j的attention
-        # print(torch.transpose(Wh2,2,1).shape)
         e = self.leakyrelu(Wh1 +torch.transpose(Wh2,2,1))  # (N, N)
+        # torch.Size([4, 1, 1140])
         # padding 是一个与 e 形状相同的矩阵，其中的所有元素都是一个很小的负数。
         # 以便在执行下一步的 mask 操作时，将注意力矩阵中的某些位置置为负无穷，使其在 softmax 操作中趋近于零
         # 即邻接矩阵中没有边相连的位置
         padding = (-2 ** 31) * torch.ones_like(e)  # (N, N)
-        # print(adj.shape)
-        # print(padding.shape)
+        # adj.shape torch.Size([4, 1140, 1140])
+        # padding.shape torch.Size([4, 1140, 1140])
         attention = torch.where(adj > 0, e, padding)  # (N, N)
         attention = F.softmax(attention, dim=1)  # (N, N)
         # attention矩阵第i行第j列代表node_i对node_j的注意力
@@ -119,7 +118,7 @@ class GAT(nn.Module):
 
 
         x = x_feature
-        print(x.shape)
+        # ([4, 1140, 35])
         # x = F.dropout(x_feature, self.dropout, training=self.training)  # (N, nfeat)
         x = torch.cat([head(x, x_mask_data) for head in self.MH], dim=-1)  # (N, nheads*nhid)
         x = F.dropout(x, self.dropout, training=self.training)  # (N, nfeat)
@@ -130,6 +129,7 @@ class GAT(nn.Module):
         # print(x.shape,x.dtype)
         act_pre= self.active_index(x)
         con_pre = self.consume_index(x)
+        # torch.Size([4, 1140, 1])
         return  act_pre,con_pre
 
 
