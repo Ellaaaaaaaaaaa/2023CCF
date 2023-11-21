@@ -112,8 +112,8 @@ def predict(model, dataset, args, geohasd_df_dict,date_df_dict_test):
 
                 for date_id_idx in range(len(date_ids)):
                     date_id = date_ids[date_id_idx]
-                    act_level = act_pre[date_id_idx, idx,  0].cpu().item()
-                    con_level = con_pre[date_id_idx, idx,  0].cpu().item()
+                    act_level = max(0, act_pre[date_id_idx, idx, 0].cpu().item())
+                    con_level = max(0, con_pre[date_id_idx, idx, 0].cpu().item())
 
                     prediction = {
                         "geohash_id": geohash_id,
@@ -149,12 +149,12 @@ def train(args):
     # rmse_loss = torch.sqrt(mse_loss)
     # TODO 发现这里没有结合GAT和Bi-LSTM
     # TODO 要调一下这里模型的参数
-    model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
+    # model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
     # 定义 BiLSTM 模型
     # bilstm_model = my_model.BiLSTM(input_size=64, hidden_size=64, output_size=2,num_layers=2, dropout=0.3).to(args.device)
-    # model = my_model.BILSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
+    model = my_model.BILSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
     optimizer = torch.optim.Adam(params=model.parameters(),lr=args.lr)
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decline, gamma=0.5, last_epoch=-1)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decline, gamma=0.8, last_epoch=-1)
     model.train()
     trainset = data.DataIterator(x_train,x_mask_train,x_edge_train, args)
     valset =data.DataIterator(x_dev,x_mask_dev,x_edge_dev, args)
@@ -182,25 +182,30 @@ def train(args):
 
 
     # 在训练循环结束后，保存模型参数
-    torch.save(model.state_dict(), 'GAT_500_0.005_16.pth')
-
-    # # todo 读取测试集，我新加的还没做测试，可能有问题
-    # geohasd_df_dict_test, date_df_dict_test, x_test, x_mask_test, x_edge_test = get_train_data(
-    #     './dataset/node_test_4_A.csv',
-    #     './dataset/edge_test_4_A.csv')
-    #
-    # # 转换为 torch.Tensor
-    # x_test, x_mask_test, x_edge_test = torch.tensor(x_test), torch.tensor(x_mask_test), torch.tensor(x_edge_test)
-    # testset = data.DataIteratorTest(x_test, x_mask_test, x_edge_test, args)
-    # # 载入模型参数
-    # model.load_state_dict(torch.load('GAT_model_weights.pth'))
-    # # 在测试集上进行预测
-    # predictions_df = predict(model, testset, args,geohasd_df_dict_test,date_df_dict_test)
-    #
-    # # 将预测结果保存到 CSV 文件
-    # predictions_df.to_csv("predictions_test_4_A.csv", sep='\t', index=False)
+    torch.save(model.state_dict(), 'LSTM_500_0.005_4.pth')
 
 
+
+
+def test(args):
+    geohasd_df_dict_test, date_df_dict_test, x_test, x_mask_test, x_edge_test = get_train_data(
+        './dataset/node_test_4_A.csv',
+        './dataset/edge_test_4_A.csv')
+
+    # 日期的嵌入维度
+    date_emb = 5
+    model = my_model.GAT(date_emb=[90, date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3,
+                         nheads=8).to(args.device)
+    # 转换为 torch.Tensor
+    x_test, x_mask_test, x_edge_test = torch.tensor(x_test), torch.tensor(x_mask_test), torch.tensor(x_edge_test)
+    testset = data.DataIteratorTest(x_test, x_mask_test, x_edge_test, args)
+    # 载入模型参数
+    model.load_state_dict(torch.load('GAT_500_0.005_16.pth'))
+    # 在测试集上进行预测
+    predictions_df = predict(model, testset, args, geohasd_df_dict_test, date_df_dict_test)
+
+    # 将预测结果保存到 CSV 文件
+    predictions_df.to_csv("predictions_test_4_A.csv", sep='\t', index=False)
 
 
 if __name__ == "__main__":
@@ -219,6 +224,8 @@ if __name__ == "__main__":
 
     parser.add_argument('--decline', type=int, default=30, help="number of epochs to decline")
     train(parser.parse_args())
+    # test(parser.parse_args())
+
 
 
 
