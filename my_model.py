@@ -161,9 +161,11 @@ class BILSTM(nn.Module):
         con_pre = self.consume_index(x)
         # print(act_pre.shape,con_pre.shape)
         return  act_pre,con_pre
+        
+
 
 ### todo 重新写的GAT+LSTM模型
-
+"""
 class GraphAttentionLayer(nn.Module):
     def __init__(self, in_features, out_features, dropout, alpha, concat):
         super(GraphAttentionLayer, self).__init__()
@@ -252,11 +254,13 @@ class GAT(nn.Module):
         # torch.Size([4, 1140, 64]) torch.float32
         return x
 
+"""
+
 class BiLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size, dropout):
         super(BiLSTM, self).__init__()
         self.dropout = dropout
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers,dropout=dropout, batch_first=True, bidirectional=True)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers,dropout=dropout, batch_first=False, bidirectional=True)
         # self.linear = nn.Linear(2 * hidden_size, output_size)
         self.active_index = nn.Linear(2 * hidden_size, 1)
         self.consume_index = nn.Linear(2 * hidden_size, 1)
