@@ -129,14 +129,15 @@ def predict(model, dataset, args, geohasd_df_dict,date_df_dict_test):
     return predictions_df
 
 
+
 def train(args):
 
     geohasd_df_dict, date_df_dict, x_train, x_mask, x_edge_df = get_train_data('./dataset/train_90.csv',
                                                                                         "./dataset/edge_90.csv")
-    #分割各种训练集测试集
-    # x_train,x_dev = torch.tensor(x_train[:int(len(x_train)*args.rat)]),torch.tensor(x_train[int(len(x_train)*args.rat):])
-    # x_mask_train,x_mask_dev = torch.tensor(x_mask[:int(len(x_mask)*args.rat)]),torch.tensor(x_mask[int(len(x_mask)*args.rat):])
-    # x_edge_train, x_edge_dev = torch.tensor(x_edge_df[:int(len(x_edge_df) * args.rat)]),torch.tensor( x_edge_df[int(len(x_edge_df) * args.rat):])
+    # 分割各种训练集测试集
+    x_train,x_dev = torch.tensor(x_train[:int(len(x_train)*args.rat)]),torch.tensor(x_train[int(len(x_train)*args.rat):])
+    x_mask_train,x_mask_dev = torch.tensor(x_mask[:int(len(x_mask)*args.rat)]),torch.tensor(x_mask[int(len(x_mask)*args.rat):])
+    x_edge_train, x_edge_dev = torch.tensor(x_edge_df[:int(len(x_edge_df) * args.rat)]),torch.tensor( x_edge_df[int(len(x_edge_df) * args.rat):])
 
     # 日期的嵌入维度
     date_emb = 5
@@ -149,52 +150,88 @@ def train(args):
     # TODO 发现这里没有结合GAT和Bi-LSTM
     # TODO 要调一下这里模型的参数
     model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
-    # # model = my_model.BILSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
+    # model = my_model.BILSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
     # # todo 这个新模型损失反而变大了
-    # # model = my_model.GATBiLSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid_gat=32, nhid_lstm=32, dropout=0.3, alpha=0.3, nheads=4).to(args.device)
-    # optimizer = torch.optim.Adam(params=model.parameters(),lr=args.lr)
-    # # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decline, gamma=0.5, last_epoch=-1)
-    # model.train()
-    # trainset = data.DataIterator(x_train,x_mask_train,x_edge_train, args)
-    # valset =data.DataIterator(x_dev,x_mask_dev,x_edge_dev, args)
-    # for indx in range(args.epochs):
-    #     train_all_loss = 0.0
-    #     for j in trange(trainset.batch_count):
-    #         # todo x_edge_data即边上特征值组成的数据没使用到
-    #         x_date,x_feature,x_mask_data,x_edge_data,x_tags= trainset.get_batch(j)
-    #         # torch.Size([4, 1140])torch.Size([4, 1140, 35])torch.Size([4, 1140, 1140, 1])torch.Size([4, 1140, 1140, 2])torch.Size([4, 1140, 2])
-    #         # todo nhid隐藏层输入的是边的邻接矩阵关系x_mask_data，这里没有考虑边上的值
-    #         act_pre, con_pre = model(x_date,x_feature,x_mask_data)
-    #         # 得到活跃指数和消费指数的预测结果，并将它们拼接在一起
-    #         predict = torch.cat((act_pre, con_pre), dim=-1)
-    #         # ([4, 1140, 2])
-    #         loss = criterion(predict, x_tags)
-    #         train_all_loss += loss
-    #         optimizer.zero_grad()
-    #         loss.backward()
-    #     optimizer.step()
-    #     print('this epoch train loss :{0}'.format(train_all_loss))
-    #     # scheduler.step()
-    #     eval(model,valset, args)
-    #
-    # # 在训练循环结束后，保存模型参数
+    # model = my_model.GATBiLSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid_gat=32, nhid_lstm=32, dropout=0.3, alpha=0.3, nheads=4).to(args.device)
+    optimizer = torch.optim.Adam(params=model.parameters(),lr=args.lr)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decline, gamma=0.5, last_epoch=-1)
+    model.train()
+    trainset = data.DataIterator(x_train,x_mask_train,x_edge_train, args)
+    valset =data.DataIterator(x_dev,x_mask_dev,x_edge_dev, args)
+    """
+    for indx in range(args.epochs):
+        train_all_loss = 0.0
+        for j in trange(trainset.batch_count):
+            # todo x_edge_data即边上特征值组成的数据没使用到
+            x_date,x_feature,x_mask_data,x_edge_data,x_tags= trainset.get_batch(j)
+            # torch.Size([4, 1140])torch.Size([4, 1140, 35])torch.Size([4, 1140, 1140, 1])torch.Size([4, 1140, 1140, 2])torch.Size([4, 1140, 2])
+            # todo nhid隐藏层输入的是边的邻接矩阵关系x_mask_data，这里没有考虑边上的值
+            act_pre, con_pre = model(x_date,x_feature,x_mask_data)
+            # 得到活跃指数和消费指数的预测结果，并将它们拼接在一起
+            predict = torch.cat((act_pre, con_pre), dim=-1)
+            # ([4, 1140, 2])
+            loss = criterion(predict, x_tags)
+            train_all_loss += loss
+            optimizer.zero_grad()
+            loss.backward()
+        optimizer.step()
+        print('this epoch train loss :{0}'.format(train_all_loss))
+        # scheduler.step()
+        eval(model,valset, args)
+"""
+    # 遍历每一批次的数据，获取 GAT 模型更新后的节点特征，并整合为一个张量
+    all_node_features = []
+    for indx in range(args.epochs):
+        train_all_loss = 0.0
+        for j in trange(trainset.batch_count):
+            # todo x_edge_data即边上特征值组成的数据没使用到
+            x_date,x_feature,x_mask_data,x_edge_data,x_tags= trainset.get_batch(j)
+            # torch.Size([4, 1140])torch.Size([4, 1140, 35])torch.Size([4, 1140, 1140, 1])torch.Size([4, 1140, 1140, 2])torch.Size([4, 1140, 2])
+            # todo nhid隐藏层输入的是边的邻接矩阵关系x_mask_data，这里没有考虑边上的值
+            # 使用 GAT 模型获取更新后的节点特征
+            gat_node_features = model(x_date,x_feature,x_mask_data)
+            # 将节点特征添加到列表中
+            all_node_features.append(gat_node_features)
+            # ([4, 1140, 64])
+        # 将列表转换为张量，维度为 (num_batches, batch_size, num_nodes, node_features)
+        all_node_features_tensor = torch.stack(all_node_features, dim=0)
+        # 拼接为时间序列的数据格式 (num_batches * batch_size, num_nodes, node_features)
+        all_node_features_flat = all_node_features_tensor.view(-1, all_node_features_tensor.size(2),
+                                                               all_node_features_tensor.size(3))
+        print(all_node_features_flat.shape)
+        # 定义 BiLSTM 模型
+        bilstm_model = my_model.BiLSTM(input_size=64, hidden_size=64, output_size=2,
+                                       num_layers=2, dropout=0.3)
+        # 输入到 BiLSTM 模型
+        bilstm_out, _ = bilstm_model(all_node_features_flat)
+
+        loss = criterion(predict, x_tags)
+        train_all_loss += loss
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        print('this epoch train loss :{0}'.format(train_all_loss))
+        # scheduler.step()
+        eval(model,valset, args)
+
+    # 在训练循环结束后，保存模型参数
     # torch.save(model.state_dict(), 'GAT_model_weights.pth')
 
     # # todo 读取测试集，我新加的还没做测试，可能有问题
-    geohasd_df_dict_test, date_df_dict_test, x_test, x_mask_test, x_edge_test = get_train_data(
-        './dataset/node_test_4_A.csv',
-        './dataset/edge_test_4_A.csv')
-
-    # 转换为 torch.Tensor
-    x_test, x_mask_test, x_edge_test = torch.tensor(x_test), torch.tensor(x_mask_test), torch.tensor(x_edge_test)
-    testset = data.DataIteratorTest(x_test, x_mask_test, x_edge_test, args)
-    # 载入模型参数
-    model.load_state_dict(torch.load('GAT_model_weights.pth'))
-    # 在测试集上进行预测
-    predictions_df = predict(model, testset, args,geohasd_df_dict_test,date_df_dict_test)
-
-    # 将预测结果保存到 CSV 文件
-    predictions_df.to_csv("predictions_test_4_A.csv", sep='\t', index=False)
+    # geohasd_df_dict_test, date_df_dict_test, x_test, x_mask_test, x_edge_test = get_train_data(
+    #     './dataset/node_test_4_A.csv',
+    #     './dataset/edge_test_4_A.csv')
+    #
+    # # 转换为 torch.Tensor
+    # x_test, x_mask_test, x_edge_test = torch.tensor(x_test), torch.tensor(x_mask_test), torch.tensor(x_edge_test)
+    # testset = data.DataIteratorTest(x_test, x_mask_test, x_edge_test, args)
+    # # 载入模型参数
+    # model.load_state_dict(torch.load('GAT_model_weights.pth'))
+    # # 在测试集上进行预测
+    # predictions_df = predict(model, testset, args,geohasd_df_dict_test,date_df_dict_test)
+    #
+    # # 将预测结果保存到 CSV 文件
+    # predictions_df.to_csv("predictions_test_4_A.csv", sep='\t', index=False)
 
 
 
