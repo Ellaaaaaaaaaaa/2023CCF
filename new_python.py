@@ -149,7 +149,7 @@ def train(args):
     # rmse_loss = torch.sqrt(mse_loss)
     # TODO 发现这里没有结合GAT和Bi-LSTM
     # TODO 要调一下这里模型的参数
-    # model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
+    # model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=128, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
     # 定义 BiLSTM 模型
     # bilstm_model = my_model.BiLSTM(input_size=64, hidden_size=64, output_size=2,num_layers=2, dropout=0.3).to(args.device)
     model = my_model.BILSTM(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
@@ -158,6 +158,7 @@ def train(args):
     model.train()
     trainset = data.DataIterator(x_train,x_mask_train,x_edge_train, args)
     valset =data.DataIterator(x_dev,x_mask_dev,x_edge_dev, args)
+
 
     for indx in range(args.epochs):
         train_all_loss = 0.0
@@ -182,7 +183,7 @@ def train(args):
 
 
     # 在训练循环结束后，保存模型参数
-    torch.save(model.state_dict(), 'LSTM_500_0.005_4.pth')
+    torch.save(model.state_dict(), 'BILSTM_300_0.005_64.pth')
 
 
 
@@ -194,37 +195,38 @@ def test(args):
 
     # 日期的嵌入维度
     date_emb = 5
-    model = my_model.GAT(date_emb=[90, date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3,
-                         nheads=8).to(args.device)
+    # model = my_model.GAT(date_emb=[90, date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3,nheads=8).to(args.device)
+    model = my_model.BILSTM(date_emb=[90, date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3,
+                            nheads=8).to(args.device)
     # 转换为 torch.Tensor
     x_test, x_mask_test, x_edge_test = torch.tensor(x_test), torch.tensor(x_mask_test), torch.tensor(x_edge_test)
     testset = data.DataIteratorTest(x_test, x_mask_test, x_edge_test, args)
     # 载入模型参数
-    model.load_state_dict(torch.load('GAT_500_0.005_16.pth'))
+    model.load_state_dict(torch.load('BILSTM_300_0.005_64.pth'))
     # 在测试集上进行预测
     predictions_df = predict(model, testset, args, geohasd_df_dict_test, date_df_dict_test)
 
     # 将预测结果保存到 CSV 文件
-    predictions_df.to_csv("predictions_test_4_A.csv", sep='\t', index=False)
+    predictions_df.to_csv("predictions_BILSTM_300_0.005_64.pth.csv", sep='\t', index=False)
 
 
 if __name__ == "__main__":
 
     torch.cuda.empty_cache()
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', type=int, default=500,
+    parser.add_argument('--epochs', type=int, default=300,
                         help='training epoch number')
-    parser.add_argument('--batch_size', type=int, default=4,
+    parser.add_argument('--batch_size', type=int, default=32,
                         help='batch_size')
-    parser.add_argument('--device', type=str, default="cuda",
+    parser.add_argument('--device', type=str, default="cpu",
                         help='gpu or cpu')
     parser.add_argument('--lr', type=float, default=5e-3,
                         )
     parser.add_argument('--rat', type=float, default=0.9,)
 
     parser.add_argument('--decline', type=int, default=30, help="number of epochs to decline")
-    train(parser.parse_args())
-    # test(parser.parse_args())
+    # train(parser.parse_args())
+    test(parser.parse_args())
 
 
 
