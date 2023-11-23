@@ -54,7 +54,7 @@ class GraphAttentionLayer(nn.Module):
         self.concat = concat
 
         self.W = nn.Parameter(torch.zeros(in_features, out_features))
-        self.a  = nn.Parameter(torch.zeros(2 * out_features, 1))
+        self.a = nn.Parameter(torch.zeros(2 * out_features, 1))
         nn.init.xavier_uniform_(self.W.data, gain=1.414)
         nn.init.xavier_uniform_(self.a.data, gain=1.414)
 
@@ -66,7 +66,7 @@ class GraphAttentionLayer(nn.Module):
         adj: sparse matrix with shape (N, N)
         p
         '''
-        adj=torch.squeeze(adj,-1)
+        adj = torch.squeeze(adj, -1)
         # torch.Size([4, 1140, 1140])
 
         Wh = torch.matmul(h, self.W)  # (N, out_features) 4，1140，64
@@ -79,7 +79,7 @@ class GraphAttentionLayer(nn.Module):
         # Wh1 + Wh2.T 是N*N矩阵，第i行第j列是Wh1[i]+Wh2[j]
         # 那么Wh1 + Wh2.T的第i行第j列刚好就是文中的a^T*[Whi||Whj]
         # e矩阵 代表着节点i对节点j的attention
-        e = self.leakyrelu(Wh1 +torch.transpose(Wh2,2,1))  # (N, N)
+        e = self.leakyrelu(Wh1 + torch.transpose(Wh2, 2, 1))  # (N, N)
         # adj.shape torch.Size([4, 1140, 1140])
         # padding 是一个与 e 形状相同的矩阵，其中的所有元素都是一个很小的负数。
         # 以便在执行下一步的 mask 操作时，将注意力矩阵中的某些位置置为负无穷，使其在 softmax 操作中趋近于零
@@ -100,24 +100,24 @@ class GraphAttentionLayer(nn.Module):
         else:
             return h_prime
 
+
 # nhid隐藏层输入的是边的邻接矩阵关系
 # 这里没有考虑边上的值
 class GAT(nn.Module):
-    def __init__(self,date_emb, nfeat, nhid, dropout, alpha, nheads):
+    def __init__(self, date_emb, nfeat, nhid, dropout, alpha, nheads):
         super(GAT, self).__init__()
-        date_index_number,date_dim = date_emb[0], date_emb[1]
+        date_index_number, date_dim = date_emb[0], date_emb[1]
         self.dropout = dropout
         self.MH = nn.ModuleList([
             GraphAttentionLayer(nfeat, nhid, dropout, alpha, concat=True)
             for _ in range(nheads)
         ])
         self.out_att = GraphAttentionLayer(nhid * nheads, nhid, dropout, alpha, concat=False)
-        self.date_embdding = nn.Embedding(date_index_number,date_dim)
-        self.active_index = nn.Linear(nhid,1)
-        self.consume_index = nn.Linear(nhid,1)
-    def forward(self,x_date,x_feature,x_mask_data):
+        self.date_embdding = nn.Embedding(date_index_number, date_dim)
+        self.active_index = nn.Linear(nhid, 1)
+        self.consume_index = nn.Linear(nhid, 1)
 
-
+    def forward(self, x_date, x_feature, x_mask_data):
         x = x_feature
         # ([4, 1140, 35])
         # x = F.dropout(x_feature, self.dropout, training=self.training)  # (N, nfeat)
@@ -129,39 +129,38 @@ class GAT(nn.Module):
         # x = F.dropout(x, self.dropout, training=self.training)  # (N, nheads*nhid)
         x = self.out_att(x, x_mask_data)
         # torch.Size([4, 1140, 64]) torch.float32
-        act_pre= self.active_index(x)
+        act_pre = self.active_index(x)
         con_pre = self.consume_index(x)
         # torch.Size([4, 1140, 1])
-        return  act_pre,con_pre
+        return act_pre, con_pre
 
 
 class BILSTM(nn.Module):
-    def __init__(self,date_emb, nfeat, nhid, dropout, alpha, nheads):
+    def __init__(self, date_emb, nfeat, nhid, dropout, alpha, nheads):
         super(BILSTM, self).__init__()
-        date_index_number,date_dim = date_emb[0], date_emb[1]
+        date_index_number, date_dim = date_emb[0], date_emb[1]
         self.dropout = dropout
         self.lstm = nn.LSTM(nfeat,
-                nhid,
-                num_layers=2,
-                bias=True,
-                batch_first=False,
-                dropout=0,
-                bidirectional=True)
+                            nhid,
+                            num_layers=2,
+                            bias=True,
+                            batch_first=False,
+                            dropout=0,
+                            bidirectional=True)
 
-        self.active_index = nn.Linear(2*nhid, 1)
-        self.consume_index = nn.Linear(2*nhid, 1)
-    def forward(self,x_date,x_feature,x_mask_data):
+        self.active_index = nn.Linear(2 * nhid, 1)
+        self.consume_index = nn.Linear(2 * nhid, 1)
+
+    def forward(self, x_date, x_feature, x_mask_data):
         lstm_out, (hidden, cell) = self.lstm(x_feature)
         x = lstm_out
         # print(x.shape)
 
-
         x = F.dropout(x, self.dropout, training=self.training)  # (N, nheads*nhid)
-        act_pre= self.active_index(x)
+        act_pre = self.active_index(x)
         con_pre = self.consume_index(x)
         # print(act_pre.shape,con_pre.shape)
-        return  act_pre,con_pre
-        
+        return act_pre, con_pre
 
 
 ### todo 重新写的GAT+LSTM模型
@@ -256,11 +255,12 @@ class GAT(nn.Module):
 
 """
 
+
 class BiLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size, dropout):
         super(BiLSTM, self).__init__()
         self.dropout = dropout
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers,dropout=dropout, batch_first=False, bidirectional=True)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, dropout=dropout, batch_first=False, bidirectional=True)
         # self.linear = nn.Linear(2 * hidden_size, output_size)
         self.active_index = nn.Linear(2 * hidden_size, 1)
         self.consume_index = nn.Linear(2 * hidden_size, 1)
@@ -271,4 +271,4 @@ class BiLSTM(nn.Module):
         act_pre = self.active_index(lstm_out)
         con_pre = self.consume_index(lstm_out)
         # output = self.linear(lstm_out)
-        return act_pre,con_pre
+        return act_pre, con_pre
