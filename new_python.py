@@ -134,7 +134,7 @@ def predict(model, dataset, args, geohasd_df_dict, date_df_dict_test):
                 geohash_id = list(geohasd_df_dict.keys())[idx]
                 date_ids = list(date_df_dict_test.keys())
 
-                for date_id_idx in range(len(date_ids)):
+                for date_id_idx in range(4,len(date_ids)):
                     date_id = date_ids[date_id_idx]
                     act_level = max(0, act_pre[date_id_idx, idx, 0].cpu().item())
                     con_level = max(0, con_pre[date_id_idx, idx, 0].cpu().item())
@@ -291,7 +291,7 @@ def get_test_data(file_path, edge_pth):
 
 def test(args):
     geohasd_df_dict_test, date_df_dict_test, x_test, x_mask_test, x_edge_test = get_test_data(
-        './dataset/node_test_7.csv',
+        './dataset/node_test_7_after_process.csv',
         './dataset/edge_test_7.csv')
 
     # 日期的嵌入维度
@@ -303,12 +303,12 @@ def test(args):
     x_test, x_mask_test, x_edge_test = torch.tensor(x_test), torch.tensor(x_mask_test), torch.tensor(x_edge_test)
     testset = data.DataIteratorTest(x_test, x_mask_test, x_edge_test, args)
     # 载入模型参数
-    model.load_state_dict(torch.load('BILSTM_32_1200_4.pth'))
+    model.load_state_dict(torch.load('BILSTM_32_0.005_1500_4_0.1_True.pth'))
     # 在测试集上进行预测
     predictions_df = predict(model, testset, args, geohasd_df_dict_test, date_df_dict_test)
 
     # 将预测结果保存到 CSV 文件
-    predictions_df.to_csv("predictions_BILSTM_32_1200_4.pth.csv", sep='\t', index=False)
+    predictions_df.to_csv("predictions_BILSTM_32_0.005_1500_4_0.1_True.pth_process_3.csv", sep='\t', index=False)
 
 
 if __name__ == "__main__":
