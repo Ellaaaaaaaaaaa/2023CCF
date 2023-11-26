@@ -11,7 +11,7 @@ from tqdm import tqdm, trange
 import data
 import torch.nn as nn
 from sklearn.ensemble import RandomForestRegressor
-from bayes_opt import BayesianOptimization
+# from bayes_opt import BayesianOptimization
 
 # 获得训练集
 
@@ -44,12 +44,13 @@ def get_train_data(file_path, edge_pth):
     # number_date 90
     # 创建了一个二维列表 new_data，其中所有元素都初始化为0
     # new_data 的维度取决于节点ID和日期ID的数量
-    new_data = [len(geohasd_df_dict) * [0]] * len(date_df_dict)
+    # new_data = [len(geohasd_df_dict) * [0]] * len(date_df_dict)
+    new_data = np.zeros((len(date_df_dict), len(geohasd_df_dict),  38), dtype=float)
+
     for index, row in df.iterrows():
         # print(index)
         hash_index, date_index = geohasd_df_dict[row["geohash_id"]], date_df_dict[row["date_id"]]
         # 将时间index加到里面
-
         # [date_index] + list(row.iloc[2:]) 是一个列表，它将日期索引作为第一个元素，然后将 row 数据中从第三个元素开始的所有元素添加到列表中。
         # 这相当于将日期和节点特征数据合并为一个列表
         new_data[date_index][hash_index] = [date_index] + list(row.iloc[2:])
@@ -71,6 +72,8 @@ def get_train_data(file_path, edge_pth):
     x_mask = np.zeros((len(date_df_dict), len(geohasd_df_dict), len(geohasd_df_dict), 1), dtype=float)
     x_edge_df = np.zeros((len(date_df_dict), len(geohasd_df_dict), len(geohasd_df_dict), 2), dtype=float)
 
+    # 统计每个节点每天的边数量
+    edge_counts = np.zeros((len(date_df_dict), len(geohasd_df_dict)), dtype=int)
     # x_mask 中的值为1表示存在边，类似邻接矩阵
     # x_edge_df 中的值包含了边的特征信息
     for index, row in edge_df.iterrows():
@@ -82,10 +85,18 @@ def get_train_data(file_path, edge_pth):
             , row["F_1"], row["F_2"], date_df_dict[row["date_id"]]
         x_mask[date_index][point1_index][point2_index] = 1
         x_mask[date_index][point2_index][point1_index] = 1
+        edge_counts[date_index][point1_index] += 1
+        edge_counts[date_index][point2_index] += 1
         # TODO 这里是直接输入边特征的，数据没处理 对数处理
         x_edge_df[date_index][point1_index][point2_index] = [F_1, F_2]
         x_edge_df[date_index][point2_index][point1_index] = [F_1, F_2]
     # print(data)
+
+    # 将每天的边数量加到 F_23 上
+    for date_index in range(len(date_df_dict)):
+        for hash_index in range(len(geohasd_df_dict)):
+            new_data[date_index][hash_index][23] += edge_counts[date_index][hash_index]
+
 
     return geohasd_df_dict, date_df_dict, new_data, x_mask, x_edge_df
 
@@ -96,11 +107,12 @@ def eval(model, dataset, args):
         dev_loss = 0.0
         for j in trange(dataset.batch_count):
             x_date, x_feature, x_mask_data, x_edge_data, x_tags = dataset.get_batch(j)
+            # gat_node_features = model(x_date, x_feature, x_mask_data)
             act_pre, con_pre = model(x_date, x_feature, x_mask_data)
             predict = torch.cat((act_pre, con_pre), dim=-1)
             loss = criterion(predict, x_tags)
             dev_loss += loss
-        # print("this epoch dev loss is {}".format(dev_loss))
+        print("this epoch dev loss is {}".format(dev_loss))
         model.train()
 
 
@@ -126,8 +138,8 @@ def predict(model, dataset, args, geohasd_df_dict, date_df_dict_test):
 
                     prediction = {
                         "geohash_id": geohash_id,
-                        "activity_level": act_level,
                         "consumption_level": con_level,
+                        "activity_level": act_level,
                         "date_id": date_id
                     }
                     predictions.append(prediction)
@@ -141,7 +153,7 @@ def predict(model, dataset, args, geohasd_df_dict, date_df_dict_test):
 min_train_loss = 0.0
 
 
-def train(args, epochs, lr, batch_size):
+def train(args):
     geohasd_df_dict, date_df_dict, x_train, x_mask, x_edge_df = get_train_data('./dataset/train_90.csv',
                                                                                "./dataset/edge_90.csv")
     # 分割各种训练集测试集
@@ -161,18 +173,18 @@ def train(args, epochs, lr, batch_size):
     # rmse_loss = torch.sqrt(mse_loss)
     # TODO 发现这里没有结合GAT和Bi-LSTM
     # TODO 要调一下这里模型的参数
-    # model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=128, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
+    # model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
     # 定义 BiLSTM 模型
     # bilstm_model = my_model.BiLSTM(input_size=64, hidden_size=64, output_size=2,num_layers=2, dropout=0.3).to(args.device)
-    model = my_model.BILSTM(date_emb=[len(date_df_dict), date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3,
-                            nheads=8).to(args.device)
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
+    model = my_model.BILSTM(date_emb=[len(date_df_dict), date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
+    optimizer = torch.optim.Adam(params=model.parameters(),lr=args.lr)
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decline, gamma=0.8, last_epoch=-1)
     model.train()
-    trainset = data.DataIterator(x_train, x_mask_train, x_edge_train, args, batch_size)
-    valset = data.DataIterator(x_dev, x_mask_dev, x_edge_dev, args, batch_size)
+    trainset = data.DataIterator(x_train, x_mask_train, x_edge_train, args)
+    valset = data.DataIterator(x_dev, x_mask_dev, x_edge_dev, args)
 
-    for indx in range(int(math.floor(epochs))):
+    model.load_state_dict(torch.load('BILSTM_32_1000_4.pth'))
+    for indx in range(args.epochs):
         train_all_loss = 0.0
 
         for j in trange(trainset.batch_count):
@@ -181,6 +193,7 @@ def train(args, epochs, lr, batch_size):
             # torch.Size([4, 1140])torch.Size([4, 1140, 35])torch.Size([4, 1140, 1140, 1])torch.Size([4, 1140, 1140, 2])torch.Size([4, 1140, 2])
             # todo nhid隐藏层输入的是边的邻接矩阵关系x_mask_data，这里没有考虑边上的值
             act_pre, con_pre = model(x_date, x_feature, x_mask_data)
+            # gat_node_features = model(x_date, x_feature, x_mask_data)
             # act_pre, con_pre= bilstm_model(gat_node_features)
             # 得到活跃指数和消费指数的预测结果，并将它们拼接在一起
             predict = torch.cat((act_pre, con_pre), dim=-1)
@@ -190,23 +203,16 @@ def train(args, epochs, lr, batch_size):
             optimizer.zero_grad()
             loss.backward()
         optimizer.step()
-        # print('this epoch train loss :{0}'.format(train_all_loss))
+        print('{0} epoch train loss :{1}'.format(indx, train_all_loss))
         # scheduler.step()
+        # eval(model, valset, args,bilstm_model)
         eval(model, valset, args)
 
-    # 在训练循环结束后，保存最小loss的模型参数
-    global min_train_loss
-    if min_train_loss == 0.0:
-        torch.save(model.state_dict(), 'BILSTM_bys.pth')
-        min_train_loss = train_all_loss
-    elif train_all_loss < min_train_loss:
-        torch.save(model.state_dict(), 'BILSTM_bys.pth')
-        min_train_loss = train_all_loss
-
-    return -train_all_loss
+    torch.save(model.state_dict(), 'BILSTM_32_1200_4.pth')
 
 
-def test(args, batch_size):
+
+def test(args):
     geohasd_df_dict_test, date_df_dict_test, x_test, x_mask_test, x_edge_test = get_train_data(
         './dataset/node_test_4_A.csv',
         './dataset/edge_test_4_A.csv')
@@ -214,63 +220,33 @@ def test(args, batch_size):
     # 日期的嵌入维度
     date_emb = 5
     # model = my_model.GAT(date_emb=[90, date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3,nheads=8).to(args.device)
-    model = my_model.BILSTM(date_emb=[90, date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3,
-                            nheads=8).to(args.device)
+    model = my_model.BILSTM(date_emb=[90, date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3,nheads=8).to(args.device)
     # 转换为 torch.Tensor
     x_test, x_mask_test, x_edge_test = torch.tensor(x_test), torch.tensor(x_mask_test), torch.tensor(x_edge_test)
-    testset = data.DataIteratorTest(x_test, x_mask_test, x_edge_test, args, batch_size)
+    testset = data.DataIteratorTest(x_test, x_mask_test, x_edge_test, args)
     # 载入模型参数
-    model.load_state_dict(torch.load('BILSTM_bys.pth'))
+    model.load_state_dict(torch.load('BILSTM_32_1200_4.pth'))
     # 在测试集上进行预测
     predictions_df = predict(model, testset, args, geohasd_df_dict_test, date_df_dict_test)
 
     # 将预测结果保存到 CSV 文件
-    predictions_df.to_csv("predictions_BILSTM_bys.pth.csv", sep='\t', index=False)
-
-
-# pbounds= {'epoch': (1000, 2000),
-#          'lr': (0.001, 0.005),
-#          'batch_size': (32, 90)}
+    predictions_df.to_csv("predictions_BILSTM_32_1200_4.pth.csv", sep='\t', index=False)
 
 
 if __name__ == "__main__":
+
     torch.cuda.empty_cache()
     parser = argparse.ArgumentParser()
-    # parser.add_argument('--epochs', type=int,default=5,
-    #                     help='training epoch number')
-    # parser.add_argument('--batch_size', type=int,default=32,
-    #                     help='batch_size')
-    # parser.add_argument('--lr', type=float,
-    #                     )
+    parser.add_argument('--epochs', type=int, default=200,
+                        help='training epoch number')
+    parser.add_argument('--batch_size', type=int, default=32,
+                        help='batch_size')
     parser.add_argument('--device', type=str, default="cpu",
                         help='gpu or cpu')
-    parser.add_argument('--rat', type=float, default=0.9, )
+    parser.add_argument('--lr', type=float, default=5e-3,
+                        )
+    parser.add_argument('--rat', type=float, default=0.9,)
 
     parser.add_argument('--decline', type=int, default=30, help="number of epochs to decline")
-
-    args = parser.parse_args()
-
-    # 创建空的pbounds字典
-    pbounds = {}
-
-    pbounds['epochs'] = (1, 3)  # 根据实际情况设置下界和上界
-    pbounds['lr'] = (0.001, 0.01)  # 根据实际情况设置下界和上界
-    pbounds['batch_size'] = (32, 90)  # 根据实际情况设置下界和上界
-
-    BYS_optimizer = BayesianOptimization(
-        f=lambda lr, epochs, batch_size: train(args, epochs, lr, batch_size).detach().numpy(),
-        pbounds=pbounds,
-        verbose=2,  # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
-        random_state=1,
-        allow_duplicate_points=True
-    )
-
-    BYS_optimizer.maximize(
-        # 执行30次优化
-        init_points=5,  # 执行随机搜索的步数
-        n_iter=25,  # 执行贝叶斯优化的步数
-    )
-    # train(parser.parse_args())
-    result = BYS_optimizer.max
-    print(result)
-    test(parser.parse_args(), result['params']['batch_size'])
+    train(parser.parse_args())
+    # test(parser.parse_args())
