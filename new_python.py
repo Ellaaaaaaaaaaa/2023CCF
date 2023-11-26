@@ -1,6 +1,6 @@
 import math
 import random
-
+import dataPreProcess
 import pandas as pd
 import numpy as np
 # 读取CSV文件
@@ -213,9 +213,95 @@ def train(args):
     torch.save(model.state_dict(), 'BILSTM_32_0.01_300_2_0.3_edge.pth')
 
 
+def get_test_data(file_path, edge_pth):
+    df = pd.read_csv(file_path, encoding='utf-8')
+    edge_df = pd.read_csv(edge_pth, encoding='utf-8')
+    df.head()
+
+    geohasd_df_dict = {}
+    date_df_dict = {}
+    number_hash = 0
+    number_date = 0
+
+    # 循环遍历节点数据的 "geohash_id" "date_id"列，将不同的节点ID和时间映射到数字
+    for i in df["geohash_id"]:
+
+        if i not in geohasd_df_dict.keys():
+            geohasd_df_dict[i] = number_hash
+            number_hash += 1
+
+    for i in df["date_id"]:
+        if i not in date_df_dict.keys():
+            date_df_dict[i] = number_date
+            number_date += 1
+
+    # number_hash 1140
+    # number_date 90
+    # 创建了一个二维列表 new_data，其中所有元素都初始化为0
+    # new_data 的维度取决于节点ID和日期ID的数量
+    # new_data = [len(geohasd_df_dict) * [0]] * len(date_df_dict)
+    new_data = np.zeros((len(date_df_dict), len(geohasd_df_dict),  36), dtype=float)
+
+    for index, row in df.iterrows():
+        # print(index)
+        hash_index, date_index = geohasd_df_dict[row["geohash_id"]], date_df_dict[row["date_id"]]
+        # 将时间index加到里面
+        # [date_index] + list(row.iloc[2:]) 是一个列表，它将日期索引作为第一个元素，然后将 row 数据中从第三个元素开始的所有元素添加到列表中。
+        # 这相当于将日期和节点特征数据合并为一个列表
+        new_data[date_index][hash_index] = [date_index] + list(row.iloc[2:])
+    """
+    new_data 是一个二维列表。
+    每行代表一个日期，每列代表一个节点。
+    每个元素是一个列表，其中包含日期ID和节点的特征数据。
+    """
+    new_data = np.array(new_data)
+
+    for node in range(new_data.shape[1]):
+        dataPreProcess.process_zero(node, new_data)
+
+    print(new_data)
+    # new_data.shape 90 1140 38
+    # x_train,y_train = new_data[:, :-2], new_data[:, -2:]
+    # print(len(geohasd_df_dict))
+    # exit()
+    # print(x_train.shape)
+    # print(y_train.shape)
+    # 这里构建邻接矩阵其中mask表示1为有边，0无边， value_mask表示有值
+    # 并且这里我考虑mask是一个无向图，如果有向删除x_mask[date_index][point2_index][point1_index],value_mask同理
+    # todo 这里源代码考虑为无向图，是否考虑边的方向？不过我个人感觉先不改这里
+    x_mask = np.zeros((len(date_df_dict), len(geohasd_df_dict), len(geohasd_df_dict), 1), dtype=float)
+    x_edge_df = np.zeros((len(date_df_dict), len(geohasd_df_dict), len(geohasd_df_dict), 2), dtype=float)
+
+    # 统计每个节点每天的边数量
+    edge_counts = np.zeros((len(date_df_dict), len(geohasd_df_dict)), dtype=int)
+    # x_mask 中的值为1表示存在边，类似邻接矩阵
+    # x_edge_df 中的值包含了边的特征信息
+    for index, row in edge_df.iterrows():
+        # print(index)
+        if row["geohash6_point1"] not in geohasd_df_dict.keys() or row["geohash6_point2"] not in geohasd_df_dict.keys():
+            continue
+        point1_index, point2_index, F_1, F_2, date_index = geohasd_df_dict[row["geohash6_point1"]], geohasd_df_dict[
+            row["geohash6_point2"]] \
+            , row["F_1"], row["F_2"], date_df_dict[row["date_id"]]
+        x_mask[date_index][point1_index][point2_index] = 1
+        x_mask[date_index][point2_index][point1_index] = 1
+        edge_counts[date_index][point1_index] += 1
+        edge_counts[date_index][point2_index] += 1
+        # TODO 这里是直接输入边特征的，数据没处理 对数处理
+        x_edge_df[date_index][point1_index][point2_index] = [F_1, F_2]
+        x_edge_df[date_index][point2_index][point1_index] = [F_1, F_2]
+    # print(data)
+
+    # 将每天的边数量加到 F_23 上
+    for date_index in range(len(date_df_dict)):
+        for hash_index in range(len(geohasd_df_dict)):
+            new_data[date_index][hash_index][23] += edge_counts[date_index][hash_index]
+
+
+    return geohasd_df_dict, date_df_dict, new_data, x_mask, x_edge_df
 
 def test(args):
-    geohasd_df_dict_test, date_df_dict_test, x_test, x_mask_test, x_edge_test = get_train_data(
+    geohasd_df_dict_test, date_df_dict_test, x_test, x_mask_test, x_edge_test = get_test_data(
         './dataset/node_test_4_A.csv',
         './dataset/edge_test_4_A.csv')
 
@@ -250,5 +336,5 @@ if __name__ == "__main__":
     parser.add_argument('--rat', type=float, default=0.9,)
 
     parser.add_argument('--decline', type=int, default=30, help="number of epochs to decline")
-    train(parser.parse_args())
-    # test(parser.parse_args())
+    # train(parser.parse_args())
+    test(parser.parse_args())

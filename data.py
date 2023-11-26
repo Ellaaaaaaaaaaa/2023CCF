@@ -9,14 +9,13 @@ import json
 # todo 节点特征和边特征数据预处理?
 # todo 可能节点不用处理，但是边特征应该要处理
 class DataIterator(object):
-    def __init__(self, x_data,x_mask_data,x_edge_data, args, batch_size):
-        self.batch_size=int(math.floor(batch_size))
+    def __init__(self, x_data,x_mask_data,x_edge_data, args):
         self.x_data,self.x_mask_data,self.x_edge_data,=x_data,x_mask_data,x_edge_data,
         #date跟fearture的分开
         self.x_date,self.x_feature,self.x_tags=self.x_data[:,:,0],self.x_data[:,:,1:-2],x_data[:,:,-2:]
         # print(self.x_date.shape,self.x_feature.shape,self.x_tags.shape)
         self.args = args
-        self.batch_count = math.ceil(len(x_data)/batch_size)
+        self.batch_count = math.ceil(len(x_data)/args.batch_size)
 
     def get_batch(self, index):
         x_date = []
@@ -26,8 +25,8 @@ class DataIterator(object):
         x_tags = []
 
 
-        for i in range(index * self.batch_size,
-                       min((index + 1) * self.batch_size, len(self.x_data))):
+        for i in range(index * self.args.batch_size,
+                       min((index + 1) * self.args.batch_size, len(self.x_data))):
 
             x_date.append(self.x_date[i])
             x_feature.append(self.x_feature[i].float() )
@@ -49,14 +48,13 @@ class DataIterator(object):
 
 
 class DataIteratorTest(object):
-    def __init__(self, x_data,x_mask_data,x_edge_data, args, batch_size):
-        self.batch_size=int(math.floor(batch_size))
+    def __init__(self, x_data,x_mask_data,x_edge_data, args):
         self.x_data,self.x_mask_data,self.x_edge_data,=x_data,x_mask_data,x_edge_data,
         #date跟fearture的分开
         self.x_date,self.x_feature=self.x_data[:,:,0],self.x_data[:,:,1:]
         # print(self.x_date.shape,self.x_feature.shape,self.x_tags.shape)
         self.args = args
-        self.batch_count = math.ceil(len(x_data)/batch_size)
+        self.batch_count = math.ceil(len(x_data)/args.batch_size)
 
     def get_batch(self, index):
         x_date = []
@@ -66,8 +64,8 @@ class DataIteratorTest(object):
 
 
 
-        for i in range(index * self.batch_size,
-                       min((index + 1) * self.batch_size, len(self.x_data))):
+        for i in range(index * self.args.batch_size,
+                       min((index + 1) * self.args.batch_size, len(self.x_data))):
 
             x_date.append(self.x_date[i])
             x_feature.append(self.x_feature[i].float() )
