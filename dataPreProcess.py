@@ -1,8 +1,9 @@
 import pandas as pd
 import numpy as np
 
-
+num_feature = 33
 def get_test_data(file_path):
+    # 这个函数只在当前py文件中调试时用到，没有在new_python.py用到
     df = pd.read_csv(file_path, encoding='utf-8')
     df.head()
 
@@ -54,16 +55,15 @@ def distEclud(node1, node2):
     :param node2: 节点2不同date的数据
     :return: 两个节点的相似度
     """
-    # node1和node2为该
     dist = 0
     for date_index in range(node1.shape[0]):
         dist_date = 0
         # 使用zip函数同时迭代两个列表
-        for i, j in zip(node1[date_index][1:], node2[date_index][1:]):
+        for i, j in zip(node1[date_index][1:num_feature], node2[date_index][1:num_feature]):
             # 计算对应元素的差值，然后求和
             dist_date += abs(i - j)
         # 计算平均差值
-        dist_date = dist_date / (len(node1[0]) - 1)
+        dist_date = dist_date / num_feature
         dist += dist_date
     dist = dist / (node1.shape[0])
     return dist
@@ -95,8 +95,9 @@ def process_zero(node_index, all_nodes_data):
     :return:
     """
     data = all_nodes_data[:, node_index]
-    for j in range(1, len(data[0])):
-        # len(data[0])为列表长度，列表可能由日期索引+元素特征值+预测指数构成
+
+    for j in range(1, num_feature):
+        # j代表节点的第j个特征
 
         # feature_date为当前节点第j个特征不同date的列表，转换成列表便于判断0值数量
         feature_data = []
