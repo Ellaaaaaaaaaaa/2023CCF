@@ -11,6 +11,7 @@ from tqdm import tqdm, trange
 import data
 import torch.nn as nn
 from sklearn.ensemble import RandomForestRegressor
+
 # from bayes_opt import BayesianOptimization
 
 # 获得训练集
@@ -45,7 +46,7 @@ def get_train_data(file_path, edge_pth):
     # 创建了一个二维列表 new_data，其中所有元素都初始化为0
     # new_data 的维度取决于节点ID和日期ID的数量
     # new_data = [len(geohasd_df_dict) * [0]] * len(date_df_dict)
-    new_data = np.zeros((len(date_df_dict), len(geohasd_df_dict),  36), dtype=float)
+    new_data = np.zeros((len(date_df_dict), len(geohasd_df_dict), 36), dtype=float)
 
     for index, row in df.iterrows():
         # print(index)
@@ -54,7 +55,8 @@ def get_train_data(file_path, edge_pth):
         # [date_index] + list(row.iloc[2:]) 是一个列表，它将日期索引作为第一个元素，然后将 row 数据中从第三个元素开始的所有元素添加到列表中。
         # 这相当于将日期和节点特征数据合并为一个列表
 
-        new_data[date_index][hash_index] = [date_index] + list(row.iloc[2:24])+list(row.iloc[25:28])+list(row.iloc[29:])
+        new_data[date_index][hash_index] = [date_index] + list(row.iloc[2:24]) + list(row.iloc[25:28]) + list(
+            row.iloc[29:])
     """
     new_data 是一个二维列表。
     每行代表一个日期，每列代表一个节点。
@@ -98,7 +100,6 @@ def get_train_data(file_path, edge_pth):
     # for date_index in range(len(date_df_dict)):
     #     for hash_index in range(len(geohasd_df_dict)):
     #         new_data[date_index][hash_index][23] += edge_counts[date_index][hash_index]
-
 
     return geohasd_df_dict, date_df_dict, new_data, x_mask, x_edge_df
 
@@ -178,8 +179,9 @@ def train(args):
     # model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=33, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
     # 定义 BiLSTM 模型
     # bilstm_model = my_model.BiLSTM(input_size=64, hidden_size=64, output_size=2,num_layers=2, dropout=0.3).to(args.device)
-    model = my_model.BILSTM(date_emb=[len(date_df_dict), date_emb], nfeat=33, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
-    optimizer = torch.optim.Adam(params=model.parameters(),lr=args.lr)
+    model = my_model.BILSTM(date_emb=[len(date_df_dict), date_emb], nfeat=33, nhid=64, dropout=0.3, alpha=0.3,
+                            nheads=8).to(args.device)
+    optimizer = torch.optim.Adam(params=model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decline, gamma=0.9, last_epoch=-1)
     model.train()
     trainset = data.DataIterator(x_train, x_mask_train, x_edge_train, args)
@@ -240,7 +242,7 @@ def get_test_data(file_path, edge_pth):
     # 创建了一个二维列表 new_data，其中所有元素都初始化为0
     # new_data 的维度取决于节点ID和日期ID的数量
     # new_data = [len(geohasd_df_dict) * [0]] * len(date_df_dict)
-    new_data = np.zeros((len(date_df_dict), len(geohasd_df_dict),  36), dtype=float)
+    new_data = np.zeros((len(date_df_dict), len(geohasd_df_dict), 34), dtype=float)
 
     for index, row in df.iterrows():
         # print(index)
@@ -248,7 +250,7 @@ def get_test_data(file_path, edge_pth):
         # 将时间index加到里面
         # [date_index] + list(row.iloc[2:]) 是一个列表，它将日期索引作为第一个元素，然后将 row 数据中从第三个元素开始的所有元素添加到列表中。
         # 这相当于将日期和节点特征数据合并为一个列表
-        new_data[date_index][hash_index] = [date_index] + list(row.iloc[2:])
+        new_data[date_index][hash_index] = [date_index] + list(row.iloc[2:24]) + list(row.iloc[25:28]) + list(row.iloc[29:])
     """
     new_data 是一个二维列表。
     每行代表一个日期，每列代表一个节点。
@@ -256,10 +258,7 @@ def get_test_data(file_path, edge_pth):
     """
     new_data = np.array(new_data)
 
-    for node in range(new_data.shape[1]):
-        dataPreProcess.process_zero(node, new_data)
 
-    print(new_data)
     # new_data.shape 90 1140 38
     # x_train,y_train = new_data[:, :-2], new_data[:, -2:]
     # print(len(geohasd_df_dict))
@@ -272,43 +271,34 @@ def get_test_data(file_path, edge_pth):
     x_mask = np.zeros((len(date_df_dict), len(geohasd_df_dict), len(geohasd_df_dict), 1), dtype=float)
     x_edge_df = np.zeros((len(date_df_dict), len(geohasd_df_dict), len(geohasd_df_dict), 2), dtype=float)
 
-    # 统计每个节点每天的边数量
-    edge_counts = np.zeros((len(date_df_dict), len(geohasd_df_dict)), dtype=int)
     # x_mask 中的值为1表示存在边，类似邻接矩阵
     # x_edge_df 中的值包含了边的特征信息
     for index, row in edge_df.iterrows():
         # print(index)
         if row["geohash6_point1"] not in geohasd_df_dict.keys() or row["geohash6_point2"] not in geohasd_df_dict.keys():
             continue
-        point1_index, point2_index, F_1, F_2, date_index = geohasd_df_dict[row["geohash6_point1"]], geohasd_df_dict[
-            row["geohash6_point2"]] \
+        point1_index, point2_index, F_1, F_2, date_index = geohasd_df_dict[row["geohash6_point1"]], geohasd_df_dict[row["geohash6_point2"]] \
             , row["F_1"], row["F_2"], date_df_dict[row["date_id"]]
         x_mask[date_index][point1_index][point2_index] = 1
         x_mask[date_index][point2_index][point1_index] = 1
-        edge_counts[date_index][point1_index] += 1
-        edge_counts[date_index][point2_index] += 1
         # TODO 这里是直接输入边特征的，数据没处理 对数处理
         x_edge_df[date_index][point1_index][point2_index] = [F_1, F_2]
         x_edge_df[date_index][point2_index][point1_index] = [F_1, F_2]
     # print(data)
 
-    # 将每天的边数量加到 F_23 上
-    for date_index in range(len(date_df_dict)):
-        for hash_index in range(len(geohasd_df_dict)):
-            new_data[date_index][hash_index][23] += edge_counts[date_index][hash_index]
-
-
     return geohasd_df_dict, date_df_dict, new_data, x_mask, x_edge_df
+
 
 def test(args):
     geohasd_df_dict_test, date_df_dict_test, x_test, x_mask_test, x_edge_test = get_test_data(
-        './dataset/node_test_4_A.csv',
-        './dataset/edge_test_4_A.csv')
+        './dataset/node_test_7.csv',
+        './dataset/edge_test_7.csv')
 
     # 日期的嵌入维度
     date_emb = 5
     # model = my_model.GAT(date_emb=[90, date_emb], nfeat=33, nhid=64, dropout=0.3, alpha=0.3,nheads=8).to(args.device)
-    model = my_model.BILSTM(date_emb=[90, date_emb], nfeat=33, nhid=64, dropout=0.3, alpha=0.3,nheads=8).to(args.device)
+    model = my_model.BILSTM(date_emb=[90, date_emb], nfeat=33, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(
+        args.device)
     # 转换为 torch.Tensor
     x_test, x_mask_test, x_edge_test = torch.tensor(x_test), torch.tensor(x_mask_test), torch.tensor(x_edge_test)
     testset = data.DataIteratorTest(x_test, x_mask_test, x_edge_test, args)
@@ -322,7 +312,6 @@ def test(args):
 
 
 if __name__ == "__main__":
-
     torch.cuda.empty_cache()
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type=int, default=300,
@@ -333,7 +322,7 @@ if __name__ == "__main__":
                         help='gpu or cpu')
     parser.add_argument('--lr', type=float, default=1e-2,
                         )
-    parser.add_argument('--rat', type=float, default=0.9,)
+    parser.add_argument('--rat', type=float, default=0.9, )
 
     parser.add_argument('--decline', type=int, default=30, help="number of epochs to decline")
     # train(parser.parse_args())
