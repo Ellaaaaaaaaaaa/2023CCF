@@ -45,7 +45,7 @@ def get_train_data(file_path, edge_pth):
     # 创建了一个二维列表 new_data，其中所有元素都初始化为0
     # new_data 的维度取决于节点ID和日期ID的数量
     # new_data = [len(geohasd_df_dict) * [0]] * len(date_df_dict)
-    new_data = np.zeros((len(date_df_dict), len(geohasd_df_dict),  38), dtype=float)
+    new_data = np.zeros((len(date_df_dict), len(geohasd_df_dict),  36), dtype=float)
 
     for index, row in df.iterrows():
         # print(index)
@@ -53,13 +53,15 @@ def get_train_data(file_path, edge_pth):
         # 将时间index加到里面
         # [date_index] + list(row.iloc[2:]) 是一个列表，它将日期索引作为第一个元素，然后将 row 数据中从第三个元素开始的所有元素添加到列表中。
         # 这相当于将日期和节点特征数据合并为一个列表
-        new_data[date_index][hash_index] = [date_index] + list(row.iloc[2:])
+
+        new_data[date_index][hash_index] = [date_index] + list(row.iloc[2:24])+list(row.iloc[25:28])+list(row.iloc[29:])
     """
     new_data 是一个二维列表。
     每行代表一个日期，每列代表一个节点。
     每个元素是一个列表，其中包含日期ID和节点的特征数据。
     """
     new_data = np.array(new_data)
+    print(new_data[0][0])
     # new_data.shape 90 1140 38
     # x_train,y_train = new_data[:, :-2], new_data[:, -2:]
     # print(len(geohasd_df_dict))
@@ -73,7 +75,7 @@ def get_train_data(file_path, edge_pth):
     x_edge_df = np.zeros((len(date_df_dict), len(geohasd_df_dict), len(geohasd_df_dict), 2), dtype=float)
 
     # 统计每个节点每天的边数量
-    edge_counts = np.zeros((len(date_df_dict), len(geohasd_df_dict)), dtype=int)
+    # edge_counts = np.zeros((len(date_df_dict), len(geohasd_df_dict)), dtype=int)
     # x_mask 中的值为1表示存在边，类似邻接矩阵
     # x_edge_df 中的值包含了边的特征信息
     for index, row in edge_df.iterrows():
@@ -85,17 +87,17 @@ def get_train_data(file_path, edge_pth):
             , row["F_1"], row["F_2"], date_df_dict[row["date_id"]]
         x_mask[date_index][point1_index][point2_index] = 1
         x_mask[date_index][point2_index][point1_index] = 1
-        edge_counts[date_index][point1_index] += 1
-        edge_counts[date_index][point2_index] += 1
+        # edge_counts[date_index][point1_index] += 1
+        # edge_counts[date_index][point2_index] += 1
         # TODO 这里是直接输入边特征的，数据没处理 对数处理
         x_edge_df[date_index][point1_index][point2_index] = [F_1, F_2]
         x_edge_df[date_index][point2_index][point1_index] = [F_1, F_2]
     # print(data)
 
     # 将每天的边数量加到 F_23 上
-    for date_index in range(len(date_df_dict)):
-        for hash_index in range(len(geohasd_df_dict)):
-            new_data[date_index][hash_index][23] += edge_counts[date_index][hash_index]
+    # for date_index in range(len(date_df_dict)):
+    #     for hash_index in range(len(geohasd_df_dict)):
+    #         new_data[date_index][hash_index][23] += edge_counts[date_index][hash_index]
 
 
     return geohasd_df_dict, date_df_dict, new_data, x_mask, x_edge_df
@@ -173,17 +175,17 @@ def train(args):
     # rmse_loss = torch.sqrt(mse_loss)
     # TODO 发现这里没有结合GAT和Bi-LSTM
     # TODO 要调一下这里模型的参数
-    # model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
+    # model = my_model.GAT(date_emb =[len(date_df_dict),date_emb], nfeat=33, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
     # 定义 BiLSTM 模型
     # bilstm_model = my_model.BiLSTM(input_size=64, hidden_size=64, output_size=2,num_layers=2, dropout=0.3).to(args.device)
-    model = my_model.BILSTM(date_emb=[len(date_df_dict), date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
+    model = my_model.BILSTM(date_emb=[len(date_df_dict), date_emb], nfeat=33, nhid=64, dropout=0.3, alpha=0.3, nheads=8).to(args.device)
     optimizer = torch.optim.Adam(params=model.parameters(),lr=args.lr)
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decline, gamma=0.8, last_epoch=-1)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decline, gamma=0.9, last_epoch=-1)
     model.train()
     trainset = data.DataIterator(x_train, x_mask_train, x_edge_train, args)
     valset = data.DataIterator(x_dev, x_mask_dev, x_edge_dev, args)
 
-    model.load_state_dict(torch.load('BILSTM_32_1000_4.pth'))
+    # model.load_state_dict(torch.load('BILSTM_32_1000_4.pth'))
     for indx in range(args.epochs):
         train_all_loss = 0.0
 
@@ -204,11 +206,11 @@ def train(args):
             loss.backward()
         optimizer.step()
         print('{0} epoch train loss :{1}'.format(indx, train_all_loss))
-        # scheduler.step()
+        scheduler.step()
         # eval(model, valset, args,bilstm_model)
         eval(model, valset, args)
 
-    torch.save(model.state_dict(), 'BILSTM_32_1200_4.pth')
+    torch.save(model.state_dict(), 'BILSTM_32_0.01_300_2_0.3_edge.pth')
 
 
 
@@ -219,8 +221,8 @@ def test(args):
 
     # 日期的嵌入维度
     date_emb = 5
-    # model = my_model.GAT(date_emb=[90, date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3,nheads=8).to(args.device)
-    model = my_model.BILSTM(date_emb=[90, date_emb], nfeat=35, nhid=64, dropout=0.3, alpha=0.3,nheads=8).to(args.device)
+    # model = my_model.GAT(date_emb=[90, date_emb], nfeat=33, nhid=64, dropout=0.3, alpha=0.3,nheads=8).to(args.device)
+    model = my_model.BILSTM(date_emb=[90, date_emb], nfeat=33, nhid=64, dropout=0.3, alpha=0.3,nheads=8).to(args.device)
     # 转换为 torch.Tensor
     x_test, x_mask_test, x_edge_test = torch.tensor(x_test), torch.tensor(x_mask_test), torch.tensor(x_edge_test)
     testset = data.DataIteratorTest(x_test, x_mask_test, x_edge_test, args)
@@ -237,13 +239,13 @@ if __name__ == "__main__":
 
     torch.cuda.empty_cache()
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', type=int, default=200,
+    parser.add_argument('--epochs', type=int, default=300,
                         help='training epoch number')
     parser.add_argument('--batch_size', type=int, default=32,
                         help='batch_size')
     parser.add_argument('--device', type=str, default="cpu",
                         help='gpu or cpu')
-    parser.add_argument('--lr', type=float, default=5e-3,
+    parser.add_argument('--lr', type=float, default=1e-2,
                         )
     parser.add_argument('--rat', type=float, default=0.9,)
 
