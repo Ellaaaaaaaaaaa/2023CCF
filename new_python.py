@@ -99,6 +99,10 @@ def get_train_data(file_path, edge_pth):
     #     for hash_index in range(len(geohasd_df_dict)):
     #         new_data[date_index][hash_index][23] += edge_counts[date_index][hash_index]
 
+    # # 处理零值
+    # for node in range(new_data.shape[1]):
+    #     dataPreProcess.process_zero(node, new_data)
+
 
     return geohasd_df_dict, date_df_dict, new_data, x_mask, x_edge_df
 
@@ -256,18 +260,8 @@ def get_test_data(file_path, edge_pth):
     """
     new_data = np.array(new_data)
 
-    for node in range(new_data.shape[1]):
-        dataPreProcess.process_zero(node, new_data)
 
-    print(new_data)
-    # new_data.shape 90 1140 38
-    # x_train,y_train = new_data[:, :-2], new_data[:, -2:]
-    # print(len(geohasd_df_dict))
-    # exit()
-    # print(x_train.shape)
-    # print(y_train.shape)
-    # 这里构建邻接矩阵其中mask表示1为有边，0无边， value_mask表示有值
-    # 并且这里我考虑mask是一个无向图，如果有向删除x_mask[date_index][point2_index][point1_index],value_mask同理
+
     # todo 这里源代码考虑为无向图，是否考虑边的方向？不过我个人感觉先不改这里
     x_mask = np.zeros((len(date_df_dict), len(geohasd_df_dict), len(geohasd_df_dict), 1), dtype=float)
     x_edge_df = np.zeros((len(date_df_dict), len(geohasd_df_dict), len(geohasd_df_dict), 2), dtype=float)
@@ -293,17 +287,20 @@ def get_test_data(file_path, edge_pth):
     # print(data)
 
     # 将每天的边数量加到 F_23 上
-    for date_index in range(len(date_df_dict)):
-        for hash_index in range(len(geohasd_df_dict)):
-            new_data[date_index][hash_index][23] += edge_counts[date_index][hash_index]
-
+    # for date_index in range(len(date_df_dict)):
+    #     for hash_index in range(len(geohasd_df_dict)):
+    #         new_data[date_index][hash_index][23] += edge_counts[date_index][hash_index]
+    #
+    # # 处理零值
+    # for node in range(new_data.shape[1]):
+    #     dataPreProcess.process_zero(node, new_data)
 
     return geohasd_df_dict, date_df_dict, new_data, x_mask, x_edge_df
 
 def test(args):
     geohasd_df_dict_test, date_df_dict_test, x_test, x_mask_test, x_edge_test = get_test_data(
-        './dataset/node_test_4_A.csv',
-        './dataset/edge_test_4_A.csv')
+        './node_test_7_after_process.csv',
+        './dataset/edge_test_7.csv')
 
     # 日期的嵌入维度
     date_emb = 5
@@ -336,5 +333,5 @@ if __name__ == "__main__":
     parser.add_argument('--rat', type=float, default=0.9,)
 
     parser.add_argument('--decline', type=int, default=30, help="number of epochs to decline")
-    # train(parser.parse_args())
+    train(parser.parse_args())
     test(parser.parse_args())
