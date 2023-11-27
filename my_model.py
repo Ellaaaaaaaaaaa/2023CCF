@@ -144,7 +144,7 @@ class BILSTM(nn.Module):
                             nhid,
                             num_layers=4,
                             bias=True,
-                            batch_first=False,
+                            batch_first=True,
                             dropout=0.1,
                             bidirectional=True)
 

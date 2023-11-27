@@ -1,5 +1,8 @@
 import math
 import random
+
+from sklearn.metrics import mean_squared_error
+
 import dataPreProcess
 import pandas as pd
 import numpy as np
@@ -55,15 +58,13 @@ def get_train_data(file_path, edge_pth):
         # [date_index] + list(row.iloc[2:]) 是一个列表，它将日期索引作为第一个元素，然后将 row 数据中从第三个元素开始的所有元素添加到列表中。
         # 这相当于将日期和节点特征数据合并为一个列表
 
-        new_data[date_index][hash_index] = [date_index] + list(row.iloc[2:24]) + list(row.iloc[25:28]) + list(
-            row.iloc[29:])
+        new_data[date_index][hash_index] = [date_index] + list(row.iloc[2:24]) + list(row.iloc[25:28]) + list(row.iloc[29:])
     """
     new_data 是一个二维列表。
     每行代表一个日期，每列代表一个节点。
     每个元素是一个列表，其中包含日期ID和节点的特征数据。
     """
     new_data = np.array(new_data)
-    print(new_data[0][0])
     # new_data.shape 90 1140 38
     # x_train,y_train = new_data[:, :-2], new_data[:, -2:]
     # print(len(geohasd_df_dict))
@@ -104,10 +105,19 @@ def get_train_data(file_path, edge_pth):
     return geohasd_df_dict, date_df_dict, new_data, x_mask, x_edge_df
 
 
+def rmse_3d(y_true, y_pred):
+    mse = np.mean((y_true - y_pred) ** 2, axis=(1, 2))
+    rmse = np.sqrt(mse)
+    avg_rmse = np.mean(rmse)
+    return avg_rmse
+
+
 def eval(model, dataset, args):
     model.eval()
     with torch.no_grad():
         dev_loss = 0.0
+        all_predictions = []
+        all_x_tags=[]
         for j in trange(dataset.batch_count):
             x_date, x_feature, x_mask_data, x_edge_data, x_tags = dataset.get_batch(j)
             # gat_node_features = model(x_date, x_feature, x_mask_data)
@@ -115,7 +125,15 @@ def eval(model, dataset, args):
             predict = torch.cat((act_pre, con_pre), dim=-1)
             loss = criterion(predict, x_tags)
             dev_loss += loss
+            all_predictions.append(predict.cpu().numpy())
+            all_x_tags.append(x_tags.cpu().numpy())
         print("this epoch dev loss is {}".format(dev_loss))
+        # 计算 RMSE
+        all_predictions = np.concatenate(all_predictions, axis=0)
+        all_x_tags = np.concatenate(all_x_tags, axis=0)
+        # 计算最终的得分
+        score = 1 / (1 + rmse_3d(all_x_tags, all_predictions))
+        print(f' Score: {score}')
         model.train()
 
 
@@ -187,7 +205,7 @@ def train(args):
     trainset = data.DataIterator(x_train, x_mask_train, x_edge_train, args)
     valset = data.DataIterator(x_dev, x_mask_dev, x_edge_dev, args)
 
-    # model.load_state_dict(torch.load('BILSTM_32_1000_4.pth'))
+    model.load_state_dict(torch.load('BILSTM_32_0.005_1500_4_0.1_True.pth'))
     for indx in range(args.epochs):
         train_all_loss = 0.0
 
@@ -212,7 +230,7 @@ def train(args):
         # eval(model, valset, args,bilstm_model)
         eval(model, valset, args)
 
-    torch.save(model.state_dict(), 'BILSTM_32_0.01_300_2_0.3_edge.pth')
+    torch.save(model.state_dict(), 'BILSTM_32_0.005_2000_4_0.1_True.pth')
 
 
 def get_test_data(file_path, edge_pth):
@@ -314,7 +332,7 @@ def test(args):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', type=int, default=300,
+    parser.add_argument('--epochs', type=int, default=500,
                         help='training epoch number')
     parser.add_argument('--batch_size', type=int, default=32,
                         help='batch_size')
@@ -325,5 +343,5 @@ if __name__ == "__main__":
     parser.add_argument('--rat', type=float, default=0.9, )
 
     parser.add_argument('--decline', type=int, default=30, help="number of epochs to decline")
-    # train(parser.parse_args())
-    test(parser.parse_args())
+    train(parser.parse_args())
+    # test(parser.parse_args())
